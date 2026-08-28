@@ -1,0 +1,17 @@
+# IDE & Tooling
+.antigravity/
+.vscode/
+settings.json
+pyrightconfig.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Backups
+backup_sunEnergyXT/
+*backup*/
+backup/
+*.bak
+*.backup

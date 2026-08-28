@@ -1,11 +1,14 @@
 import asyncio
+import json
 import logging
+import queue
 import time
 from datetime import datetime
+
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+
 from .const import *
 from .data_info import *
-import queue
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,6 +32,7 @@ class TcpClient:
         self.delay = 5
         self.data = queue.Queue()  # 存储从服务器接收的数据
         self.last_time = datetime.now()
+        self._buffer = ""
 
     async def async_connect(self):
         """建立TCP连接并启动数据监听任务."""
@@ -46,40 +50,31 @@ class TcpClient:
                 )
 
             # 建立TCP连接,需要超时机制
-            # self.reader, self.writer = await asyncio.open_connection(
-            #     self.host, self.port
-            # )
-
             self.reader, self.writer = await asyncio.wait_for(
                 asyncio.open_connection(self.host, self.port), timeout=2.0
             )
 
             self.connected = True
-
             self.last_time = datetime.now()
+            self._buffer = ""
 
             await self.async_update_diagnostics("connected")
 
             # 启动数据接收任务
-            self.listen_data_task = None
-
             self.listen_data_task = asyncio.create_task(
                 self.async_listen_data(), name="tcp_listen_data_task"
             )
 
-            message = f"connect to{self.host}:{self.port}"
-
-            _LOGGER.info(message)
+            _LOGGER.info("Connected to %s:%s", self.host, self.port)
 
         except Exception as e:
-            message = f"connect to {self.host} {self.port}" + ":  %s", e
-            _LOGGER.error(message)
+            _LOGGER.debug("connect to %s:%s failed: %s", self.host, self.port, e)
             await self.async_disconnect()
 
     async def async_disconnect(self):
         """断开TCP连接."""
-
         self.connected = False
+        self._buffer = ""
 
         await self.async_update_diagnostics("connected")
 
@@ -87,13 +82,11 @@ class TcpClient:
         if self.listen_data_task is not None and not self.listen_data_task.done():
             try:
                 self.listen_data_task.cancel()
-
                 await asyncio.wait_for(self.listen_data_task, timeout=self.delay)
             except (asyncio.CancelledError, TimeoutError):
                 pass  # 需要捕获取消错误,无法转化为异常
             except Exception as e:
-                message = "async_disconnect_isten_data_task_error: %s", e
-                _LOGGER.error(message)
+                _LOGGER.error("async_disconnect_listen_data_task_error: %s", e)
             finally:
                 self.listen_data_task = None
 
@@ -101,37 +94,28 @@ class TcpClient:
         if self.writer is not None:
             try:
                 self.writer.close()
-
                 await asyncio.wait_for(self.writer.wait_closed(), timeout=self.delay)
             except (TimeoutError, Exception) as e:
-                message = "async_disconnect_writer_error: %s", e
-                _LOGGER.error(message)
+                _LOGGER.error("async_disconnect_writer_error: %s", e)
             finally:
                 self.writer = None
                 self.reader = None
 
     async def async_send_data(self, data: str) -> bool:
         """TCP发送数据函数."""
-
         if not self.connected or not self.writer:
-            message = "not connected, cannot send data"
-            _LOGGER.error(message)
+            _LOGGER.error("not connected, cannot send data")
             return False
 
         try:
             ascii_bytes = data.encode("ascii", errors="ignore")
-
-            message = f"{self.serial_number} send_data:{ascii_bytes}"
-
-            _LOGGER.info(message)
+            _LOGGER.debug("%s send_data: %s", self.serial_number, ascii_bytes)
 
             self.writer.write(ascii_bytes)
-
             await self.writer.drain()
         except Exception as e:
-            message = "async_send_data_error: %s", e
-            _LOGGER.error(message)
-            await self.async_reconnect()
+            _LOGGER.error("async_send_data_error: %s", e)
+            self.connected = False
             return False
 
         return True
@@ -140,17 +124,14 @@ class TcpClient:
         self, data_type: str, data_value: int, set_data: str
     ) -> bool:
         """TCP数据设置函数."""
-
         # 清除原先存储的数据
         self.data.queue.clear()
 
         result = await self.async_send_data(set_data)
-
         if not result:
             return False
 
         timeout = 2
-
         start_time = time.monotonic()
 
         while True:
@@ -160,11 +141,10 @@ class TcpClient:
             try:
                 while not self.data.empty():
                     respond_info = self.data.get()
-
                     respond_code = getattr(respond_info, "code", None)
-
                     respond_data = getattr(respond_info, "data", None)
 
+                    respond_value = None
                     if respond_data is not None:
                         respond_value = getattr(respond_data, data_type, None)
 
@@ -174,8 +154,7 @@ class TcpClient:
                             return True
 
             except Exception as e:
-                message = "async_set_data_error: %s", e
-                _LOGGER.error(message)
+                _LOGGER.error("async_set_data_error: %s", e)
 
             await asyncio.sleep(0.1)
 
@@ -183,52 +162,60 @@ class TcpClient:
 
     async def async_listen_data(self):
         """TCP数据监听函数."""
+        json_decoder = json.JSONDecoder()
+        cancelled = False
 
         # 持续监听来自TCP服务器的数据
         while self.connected:
             try:
-                if self.reader is not None:
-                    # 根据你的TCP服务器数据格式进行调整,此处会一直等待接收数据
-                    data = await self.reader.read(2048)
+                if self.reader is None:
+                    break
+
+                data = await self.reader.read(2048)
 
                 if not data:
-                    message = f"{self.serial_number} disconnect"
-                    _LOGGER.error(message)
+                    _LOGGER.info("%s disconnected", self.serial_number)
                     break  # 连接已关闭
 
-                message = f"{self.serial_number} receive_data:{data}"
+                _LOGGER.debug("%s receive_data: %s", self.serial_number, data)
 
-                _LOGGER.info(message)
-
-                # 解析数据，这里假设服务器发送JSON格式的SOC信息
+                # 解析数据流，支持流式分包/合包
                 decoded_data = data.decode("ascii", errors="ignore")
+                self._buffer += decoded_data
 
-                data_lines = decoded_data.splitlines()
+                while self._buffer:
+                    # 查找 JSON 开始位置
+                    start_pos = self._buffer.find('{"code"')
+                    if start_pos == -1:
+                        brace_pos = self._buffer.find('{')
+                        if brace_pos != -1:
+                            self._buffer = self._buffer[brace_pos:]
+                        else:
+                            self._buffer = ""
+                        break
 
-                for data_line in data_lines:
-                    if data_line == "":
+                    if start_pos > 0:
+                        self._buffer = self._buffer[start_pos:]
+
+                    try:
+                        data_dict, end_pos = json_decoder.raw_decode(self._buffer)
+                    except json.JSONDecodeError:
+                        # 当前缓冲区中是尚未接收完整的数据包，等待下一次 read
+                        if len(self._buffer) > 65536:
+                            _LOGGER.warning("TCP buffer overflow (>64KB), resetting buffer")
+                            self._buffer = ""
+                        break
+
+                    # 截取已解析的 JSON 字符串
+                    self._buffer = self._buffer[end_pos:]
+
+                    try:
+                        respond_info = RespondInfo.from_dict(data_dict)
+                    except Exception as err:
+                        _LOGGER.warning("Error parsing response dict: %s", err)
                         continue
 
-                    if "xaa" in data_line.lower():
-                        continue
-
-                    if "code" not in data_line.lower():
-                        continue
-
-                    if not data_line.lower().startswith('{"code":'):
-                        continue
-
-                    count_code = data_line.lower().count("code")
-
-                    if count_code != 1:
-                        continue
-
-                    respond_info = await self.async_prase_data(data_line)
-
-                    if respond_info is None:
-                        continue
-
-                    # 设置响应S
+                    # 设置响应
                     if respond_info.code == 0x6057:
                         self.data.put(respond_info)
 
@@ -237,132 +224,116 @@ class TcpClient:
                         # 更新数据刷新时间
                         await self.async_update_diagnostics("reporttime")
                         # 更新网络强度
-                        await self.async_update_diagnostics(
-                            "networkrssi", respond_info.data
-                        )
+                        if respond_info.data is not None:
+                            await self.async_update_diagnostics(
+                                "networkrssi", respond_info.data
+                            )
                         # 更新实体信息
                         await self.async_update_entities(respond_info)
 
                     self.last_time = datetime.now()
 
+            except asyncio.CancelledError:
+                cancelled = True
+                break
             except Exception as e:
-                message = "async_listen_data_error: %s", e
-                _LOGGER.error(message)
+                _LOGGER.error("async_listen_data_error: %s", e)
                 self.connected = False
                 break
 
-        # 连接断开后尝试重连
-        await self.async_reconnect()
+        # Reconnect wird automatisch durch async_check_connect im Hintergrund verwaltet
 
     async def async_check_connect(self):
         """TCP连接状态检查函数."""
         while self.checked:
             try:
-                # 延时
-                await asyncio.sleep(self.delay)
-
                 # 判断超时后重新进行连接
                 current_time = datetime.now()
-
                 time_diff = abs((current_time - self.last_time).total_seconds())
 
-                if time_diff > 60:
+                if time_diff > 60 and self.connected:
+                    _LOGGER.info("No data received from %s:%s in 60s, reconnecting", self.host, self.port)
                     await self.async_disconnect()
                     self.last_time = datetime.now()
 
                 await self.async_update_diagnostics("connected")
 
-                if self.connected:
-                    continue
+                if not self.connected:
+                    await self.async_connect()
 
-                await self.async_connect()
+                # 已连接时5秒检查一次，未连接重试时10秒检查一次
+                sleep_time = self.delay if self.connected else 10
+                await asyncio.sleep(sleep_time)
 
+            except asyncio.CancelledError:
+                break
             except Exception as e:
-                message = "async_check_connect_error: %s", e
-                _LOGGER.error(message)
+                _LOGGER.error("async_check_connect_error: %s", e)
                 self.connected = False
+                await asyncio.sleep(self.delay)
 
     async def async_update_entities(self, data):
         """传感器实体更新状态函数."""
-        # 通过Home Assistant的事件系统触发实体更新
-        # 只能被通过 async_dispatcher_connect() 注册的特定监听器接收
-        # 当其他地方发送这个信号时，_handle_data_update会被调用
         async_dispatcher_send(
             self.hass,
             f"data_update_{self.entry_id}",
-            data,  # 可选的参数
+            data,
         )
 
     async def async_update_diagnostics(self, flag, respond_data=None):
         """传感器诊断实体更新函数."""
+        diagnostics_info = None
 
         if flag == "connected":
             connect_state = "connected" if self.connected else "disconnected"
             diagnostics_info = DiagnosticInfo(connection=connect_state)
 
-        if flag == "networkrssi":
+        elif flag == "networkrssi":
             rssi = getattr(respond_data, "t475", None)
-
             if (rssi is not None) and (rssi != 0xFFFFFFFF):
                 rssi_data = f"-{rssi} dB"
             else:
                 rssi_data = ""
-
             diagnostics_info = DiagnosticInfo(networkrssi=rssi_data)
 
-        if flag == "reporttime":
+        elif flag == "reporttime":
             report_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             diagnostics_info = DiagnosticInfo(reporttime=report_time)
 
-        # """通知诊断传感器实体更新状态"""
-        async_dispatcher_send(
-            self.hass,
-            f"diagnostic_update_{self.entry_id}",
-            diagnostics_info,  # 可选的参数
-        )
+        if diagnostics_info is not None:
+            async_dispatcher_send(
+                self.hass,
+                f"diagnostic_update_{self.entry_id}",
+                diagnostics_info,
+            )
 
-    async def async_reconnect(self):
-        """TCP断线重连函数."""
 
-        # """实现断线重连逻辑"""
-        self.connected = False
-
-        # 如果不是主动断开，尝试重连
-        if not self.listen_data_task or self.listen_data_task.cancelled():
-            return
-
-        # 延时
-        await asyncio.sleep(self.delay)
-
-        if not self.listen_data_task.cancelled():
-            await self.async_connect()
 
     async def async_stop_client(self):
         """TCP客户端停止函数."""
-
         self.checked = False
-
-        await self.async_disconnect()
 
         # 取消状态检查任务
         if self.check_connect_task is not None and not self.check_connect_task.done():
             try:
                 self.check_connect_task.cancel()
-
                 await asyncio.wait_for(self.check_connect_task, timeout=self.delay)
             except (asyncio.CancelledError, TimeoutError):
-                pass  # 需要捕获取消错误,无法转化为异常
+                pass
             except Exception as e:
-                message = "async_stop_client_error: %s", e
-                _LOGGER.error(message)
+                _LOGGER.error("async_stop_client_error: %s", e)
             finally:
                 self.check_connect_task = None
 
-    async def async_prase_data(self, data) -> RespondInfo | None:
+        await self.async_disconnect()
+
+    async def async_parse_data(self, data) -> RespondInfo | None:
         """TCP客户端数据解析函数."""
         try:
             return RespondInfo.json_to_respond(data)
         except Exception as e:
-            message = "async_listen_prase_data_error: %s", e
-            _LOGGER.error(message)
+            _LOGGER.error("async_listen_parse_data_error: %s", e)
             return None
+
+    # Alias for backward compatibility
+    async_prase_data = async_parse_data

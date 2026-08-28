@@ -64,7 +64,7 @@ ENTITY_NUMBER_TYPES = {
 
 # NumberValue初始化值
 ENTITY_NUMBER_VALUES = {
-    WIFI_CNFG_DISC_SOC_MIN: (1, 20, 1, "%", True),
+    WIFI_CNFG_DISC_SOC_MIN: (1, 30, 1, "%", True),
     WIFI_CNFG_CHG_SOC_MAX: (70, 100, 1, "%", True),
     WIFI_CP_HA_DOD_MIN_SOC: (5, 20, 1, "%", False),
     WIFI_CP_EV_DOD_MIN_SOC: (5, 40, 1, "%", False),

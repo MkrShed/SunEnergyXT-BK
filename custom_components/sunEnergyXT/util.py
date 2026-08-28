@@ -1,7 +1,17 @@
 import socket
 import voluptuous as vol
-from homeassistant.components.sensor.const import SensorDeviceClass
-from homeassistant.const import *
+from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
+from homeassistant.const import (
+    PERCENTAGE,
+    SIGNAL_STRENGTH_DECIBELS,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfPower,
+    UnitOfTemperature,
+    UnitOfTime,
+)
 from .global_config import *
 from typing import Any
 from .const import *
@@ -294,7 +304,7 @@ def get_entity_available(data_type, data_info, data_factor) -> bool:
     return available
 
 
-def get_entity_state_class(sensor_id) -> str | None:
+def get_entity_state_class(sensor_id) -> SensorStateClass | None:
     """根据实体类型获取state_class."""
 
     data_type = ENTITY_SENSOR_TYPES[sensor_id]
@@ -303,6 +313,6 @@ def get_entity_state_class(sensor_id) -> str | None:
         return None
 
     if data_type in {"t49", "t66", "t710"}:
-        return "total_increasing"
+        return SensorStateClass.TOTAL_INCREASING
 
-    return "measurement"
+    return SensorStateClass.MEASUREMENT

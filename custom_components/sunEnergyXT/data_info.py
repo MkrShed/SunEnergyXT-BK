@@ -1,8 +1,6 @@
-from typing import Any
-from dataclasses import dataclass, asdict
-import json
 from typing import Any, Dict
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict, fields
+import json
 
 
 @dataclass
@@ -36,17 +34,19 @@ class RequestInfo:
         return json.dumps(filtered_dict, separators=(",", ":"))
 
     @classmethod
-    def json_to_request(cls, json_str: str):
+    def from_dict(cls, data: dict) -> "RequestInfo":
+        """dict字典转请求信息类函数."""
+        valid_fields = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+        if "data" in filtered and isinstance(filtered["data"], dict):
+            filtered["data"] = DataInfo.dict_to_data(filtered["data"])
+        return cls(**filtered)
+
+    @classmethod
+    def json_to_request(cls, json_str: str) -> "RequestInfo":
         """jason字符串转请求信息类函数."""
-
-        # 从 JSON 字符串创建对象
         data = json.loads(json_str)
-
-        if "data" in data and isinstance(data["data"], dict):
-            # 需要给DataInfo的字段赋初始值
-            data["data"] = DataInfo.dict_to_data(data["data"])
-
-        return cls(**data)
+        return cls.from_dict(data)
 
 
 @dataclass
@@ -78,17 +78,19 @@ class RespondInfo:
         return json.dumps(filtered_dict, separators=(",", ":"))
 
     @classmethod
-    def json_to_respond(cls, json_str: str):
+    def from_dict(cls, data: dict) -> "RespondInfo":
+        """dict字典转响应信息类函数."""
+        valid_fields = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+        if "data" in filtered and isinstance(filtered["data"], dict):
+            filtered["data"] = DataInfo.dict_to_data(filtered["data"])
+        return cls(**filtered)
+
+    @classmethod
+    def json_to_respond(cls, json_str: str) -> "RespondInfo":
         """jason字符串转响应信息类函数."""
-
-        # 从 JSON 字符串创建对象
         data = json.loads(json_str)
-
-        if "data" in data and isinstance(data["data"], dict):
-            # 需要给DataInfo的字段赋初始值
-            data["data"] = DataInfo.dict_to_data(data["data"])
-
-        return cls(**data)
+        return cls.from_dict(data)
 
 
 @dataclass
@@ -201,7 +203,9 @@ class DataInfo:
     @classmethod
     def dict_to_data(cls, data_dict: Dict[str, Any]) -> "DataInfo":
         """dict字典转数据信息类函数."""
-        return cls(**data_dict)
+        valid_fields = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in data_dict.items() if k in valid_fields}
+        return cls(**filtered)
 
 
 @dataclass

@@ -72,10 +72,7 @@ class MdnsManager:
                 return None
 
             if not addresses:
-                message = "service %s has no valid addresses", service_name
-
-                _LOGGER.info(message)
-
+                _LOGGER.info("service %s has no valid addresses", service_name)
                 return None
 
             # 使用第一个可用的地址
@@ -101,9 +98,12 @@ class MdnsManager:
             sw_version = properties["fw_ver"]
             hw_version = properties["model"]
 
-            message = f"mdns discovery info serial_number:{serial_number} ip:{host} port:{port}"
-
-            _LOGGER.info(message)
+            _LOGGER.info(
+                "mdns discovery info serial_number:%s ip:%s port:%s",
+                serial_number,
+                host,
+                port,
+            )
 
             return MdnsDeiveInfo(
                 service_type,
@@ -116,8 +116,7 @@ class MdnsManager:
             )
 
         except Exception as e:
-            message = "error handling parse info: %s", e
-            _LOGGER.error(message)
+            _LOGGER.error("error handling parse info: %s", e)
 
         return None
 
@@ -130,7 +129,6 @@ class MdnsManager:
                 return
 
             serial_number = add_info.serial_number
-
             host = add_info.host
 
             if not serial_number:
@@ -141,13 +139,10 @@ class MdnsManager:
             # 发送更新函数
             await self.async_update_devices(add_info)
 
-            message = f"add mdns discovery sn:{serial_number} host:{host}"
-
-            _LOGGER.info(message)
+            _LOGGER.info("add mdns discovery sn:%s host:%s", serial_number, host)
 
         except Exception as e:
-            message = "error handling service add: %s", e
-            _LOGGER.error(message)
+            _LOGGER.error("error handling service add: %s", e)
 
     async def async_handle_service_update(self, info):
         """mdns发现更新函数."""
@@ -158,7 +153,6 @@ class MdnsManager:
                 return
 
             serial_number = update_info.serial_number
-
             host = update_info.host
 
             if not serial_number:
@@ -169,13 +163,10 @@ class MdnsManager:
             # 发送更新函数
             await self.async_update_devices(update_info)
 
-            message = f"update mdns discovery sn:{serial_number} host:{host}"
-
-            _LOGGER.info(message)
+            _LOGGER.info("update mdns discovery sn:%s host:%s", serial_number, host)
 
         except Exception as e:
-            message = "error handling service update: %s", e
-            _LOGGER.error(message)
+            _LOGGER.error("error handling service update: %s", e)
 
     async def async_handle_judge_change(self, entry_info, device_info) -> bool:
         """mdns判断配置是否更新函数."""
@@ -233,9 +224,7 @@ class MdnsManager:
 
             del GLOBAL_DEVICES[unique_id]
 
-            message = "removed device sn: %s", unique_id
-
-            _LOGGER.info(message)
+            _LOGGER.info("removed device sn: %s", unique_id)
 
             # keys_list = list(self.hass.data[DOMAIN].keys())
             # # 通知Home Assistant设备已移除
@@ -243,8 +232,7 @@ class MdnsManager:
             #     self.hass.config_entries.async_reload(keys_list[1])
             # )
         except Exception as e:
-            message = "error handling service remove: %s", e
-            _LOGGER.error(message)
+            _LOGGER.error("error handling service remove: %s", e)
 
 
 class MdnsServiceListener(ServiceListener):
@@ -279,14 +267,6 @@ class MdnsServiceListener(ServiceListener):
     async def async_handle_service_add(self, aiozc_zero, service_type, service_name):
         """mdns异步处理服务添加函数."""
         try:
-            # info = AsyncServiceInfo(type_, name)
-            # if await info.async_request(self.discovery_manager.aiozc.zeroconf, 3000):
-            #     if change_type in {"added", "updated"}:
-            #         await self.discovery_manager.async_handle_service_discovery(info)
-            #     elif change_type == "removed":
-            #         # 处理设备移除
-            #         await self.async_handle_service_removal(name)
-
             info = AsyncServiceInfo(service_type, service_name)
 
             if not await info.async_request(aiozc_zero, 3000):
@@ -295,8 +275,7 @@ class MdnsServiceListener(ServiceListener):
             await self.mdns_manager.async_handle_service_add(info)
 
         except Exception as e:
-            message = ("error handling service add: %s", e)
-            _LOGGER.error(message)
+            _LOGGER.error("error handling service add: %s", e)
 
     async def async_handle_service_remove(self, aiozc_zero, service_type, service_name):
         """mdns异步处理服务删除函数."""
@@ -304,8 +283,7 @@ class MdnsServiceListener(ServiceListener):
             await self.mdns_manager.async_handle_service_remove(service_name)
 
         except Exception as e:
-            message = ("error handling service remove: %s", e)
-            _LOGGER.error(message)
+            _LOGGER.error("error handling service remove: %s", e)
 
     async def async_handle_service_update(self, aiozc_zero, service_type, service_name):
         """mdns异步处理服务更新函数."""
@@ -318,5 +296,4 @@ class MdnsServiceListener(ServiceListener):
             await self.mdns_manager.async_handle_service_update(info)
 
         except Exception as e:
-            message = ("error handling service update: %s", e)
-            _LOGGER.error(message)
+            _LOGGER.error("error handling service update: %s", e)
