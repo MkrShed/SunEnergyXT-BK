@@ -5,20 +5,70 @@ local monitoring and control.
 
 ## Installation
 
-Install this repository as a custom Home Assistant integration, for example with
-HACS as a custom repository.
+### Home Assistant 2026.11 and later
 
-The integration files must be available under:
+1. Open the marketplace of Home Assistant, choose `Custom repositories` in its
+   menu and add `https://github.com/MkrShed/SunEnergyXT-BK` (or upstream `https://github.com/SunEnergyXT/SunEnergyXT-BK`) with the type
+   Integration.
+2. Install SunEnergyXT-BK from the marketplace and restart Home Assistant.
 
-```text
-custom_components/sunEnergyXT/
-```
+Updates are offered in the marketplace afterwards.
 
-Restart Home Assistant after installation, then add the integration from:
+### Home Assistant before 2026.11
+
+1. In HACS, add `https://github.com/MkrShed/SunEnergyXT-BK` as a custom
+   repository of the type Integration.
+2. Download SunEnergyXT-BK in HACS and restart Home Assistant.
+
+### Add the device
+
+After the restart, add the integration from:
 
 ```text
 Settings > Devices & services > Add integration > SunEnergyXT-BK
 ```
+
+## Upgrading from 1.0.3 or earlier
+
+Version 1.0.4 changes the integration domain from `sunEnergyXT` to
+`sunenergyxt_bk`, so that the built-in marketplace of Home Assistant 2026.11
+can install and update it. Earlier versions can not be updated to 1.0.4 in place,
+upgrade once as follows.
+
+### Home Assistant 2026.11 and later
+
+If the marketplace still offers 1.0.3 as the newest version, restart Home
+Assistant or select `Refresh information` in the menu of SunEnergyXT-BK first.
+The marketplace checks installed repositories only at startup and every 48
+hours.
+
+1. In the marketplace, open SunEnergyXT-BK and select `Uninstall`. When it
+   reports that SunEnergyXT-BK is in use, select `Delete and uninstall`, this
+   also deletes the configured devices.
+2. In the menu of SunEnergyXT-BK, select `Refresh information`. Without this
+   step the installation stops with "The manifest.json of the installed content
+   is for sunenergyxt_bk, not sunEnergyXT".
+3. Install SunEnergyXT-BK and restart Home Assistant.
+4. Add the devices again with the same serial numbers.
+
+### Home Assistant before 2026.11
+
+If HACS does not offer 1.0.4 yet, restart Home Assistant or select
+`Update information` for SunEnergyXT-BK in HACS first.
+
+1. Go to `Settings > Devices & services > SunEnergyXT-BK` and delete every
+   configured device.
+2. Remove SunEnergyXT-BK in HACS. If the folder
+   `/config/custom_components/sunEnergyXT/` still exists afterwards, delete it.
+   If the integration was installed by copying files, delete that folder.
+3. Download SunEnergyXT-BK in HACS and restart Home Assistant.
+4. Add the devices again with the same serial numbers.
+
+The entities get the same entity IDs as before, so automations, dashboards, and
+history keep working. Delete the old devices before adding them again,
+otherwise Home Assistant appends `_2` to the new entity IDs.
+
+From 1.0.4 on, updates are installed through the marketplace or HACS as usual.
 
 ## Prerequisites
 
@@ -47,11 +97,9 @@ It can still be enabled manually from the entity registry when needed.
 - The integration exposes the entities defined by the current local protocol.
   Device variants and extension modules may report unsupported values as
   unavailable.
-- The current integration domain is `sunEnergyXT`. Renaming the domain would be
-  a breaking change for existing installations.
 
 ## Issues
 
 Report bugs or feature requests on GitHub:
 
-https://github.com/SunEnergyXT/SunEnergyXT-BK/issues
+https://github.com/MkrShed/SunEnergyXT-BK/issues
